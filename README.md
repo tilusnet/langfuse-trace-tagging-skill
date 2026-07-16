@@ -1,6 +1,8 @@
 # langfuse-trace-tagging
 
-A [Claude Code](https://claude.com/claude-code) skill for tagging [Langfuse](https://langfuse.com) traces/sessions via the ingestion API — handles credential discovery/setup, and (critically) works around a real Langfuse API limitation most people find out about the hard way.
+An agent-skill for tagging [Langfuse](https://langfuse.com) traces/sessions via the ingestion API — handles credential discovery/setup, and (critically) works around a real Langfuse API limitation most people find out about the hard way.
+
+The skill is written agent-agnostically: each step states the underlying requirement, with a concrete illustrative implementation for **[Claude Code](https://claude.com/claude-code)** today. PRs adding callouts for other agents (Cursor, Copilot, Codex, Gemini CLI, etc.) are welcome — see [`SKILL.md`](skills/langfuse-trace-tagging/SKILL.md).
 
 ## The gotcha this skill exists for
 
@@ -19,6 +21,8 @@ This skill designs around that constraint from the start: it always builds a ful
 
 ## Install
 
+### Claude Code
+
 ```bash
 npx skills add tilusnet/langfuse-trace-tagging-skill --skill langfuse-trace-tagging --agent claude-code
 ```
@@ -28,6 +32,10 @@ Or manually:
 git clone https://github.com/tilusnet/langfuse-trace-tagging-skill.git
 cp -r langfuse-trace-tagging-skill/skills/langfuse-trace-tagging ~/.claude/skills/
 ```
+
+### Other agents
+
+`skills/langfuse-trace-tagging/SKILL.md` itself has no Claude-Code-only content in its *requirements* — only its illustrative implementation notes are Claude-Code-specific, clearly marked as callouts. Point your agent's skill-loading mechanism at the same file, and swap in your agent's own equivalent for the callout steps (persistent notes/memory, secret storage, confirmation gating) as needed.
 
 ## Why this exists
 

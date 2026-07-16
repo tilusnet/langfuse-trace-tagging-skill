@@ -7,29 +7,26 @@ description: Tag Langfuse traces/sessions via the ingestion API. Use when the us
 
 Tags a Langfuse session's traces via the ingestion API. Read this whole skill before doing anything — the tag-mutation limitation in step 2 changes how you should approach every step after it.
 
+This skill is written to be agent-agnostic: each step states the underlying requirement first, with a **concrete illustrative implementation for Claude Code** underneath. If you're a different agent (or maintaining this skill for one), keep the requirement and swap in your own agent's equivalent mechanism — e.g. whatever persistent-notes/memory feature, secret-storage convention, or confirmation-gating pattern it has. Contributions adding callouts for other agents are welcome.
+
 ## 1. Credential discovery
 
-Do these in order, stopping at the first that succeeds:
+**Requirement**: before asking the user to set anything up from scratch, check whether Langfuse API credentials for this instance are already known/persisted somewhere accessible to you. If not, guide the user through first-time setup without ever having them paste the secret key directly into chat, and without silently persisting the secret anywhere without their explicit confirmation of *how* (not just *that*) it'll be stored.
 
-1. **Check memory** for a `reference`-type entry documenting Langfuse API credentials (search for something like "langfuse api credentials"). If found, follow its retrieval instructions as written.
-2. **Otherwise**, ask the user for:
-   - their Langfuse **public key** (safe to share in chat — it is not secret)
-   - the Langfuse **host URL**
+> **Claude Code**: do these in order, stopping at the first that succeeds.
+> 1. Check memory for a `reference`-type entry documenting Langfuse API credentials (search for something like "langfuse api credentials"). If found, follow its retrieval instructions as written.
+> 2. Otherwise, ask the user for their Langfuse **public key** (safe to share in chat — it is not secret) and the Langfuse **host URL**, then attempt to retrieve a matching secret from macOS Keychain using this skill's own naming convention:
+>    ```bash
+>    security find-generic-password -a "<public-key>" -s "langfuse-trace-tagging" -w
+>    ```
+>    (service name `langfuse-trace-tagging`, account = the public key value — a convention this skill defines, not something tied to any particular user or instance.)
+> 3. If no Keychain entry exists, run first-time setup:
+>    - Ask the user to save `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` into a local scratch file using their own editor, then tell you the file path.
+>    - `source` that file into environment variables — never echo the secret value in any visible command or output.
+>    - **Explicitly ask the user for confirmation before writing anything to Keychain.** Do not treat this as implied by earlier instructions to "set up credentials" — a Keychain write is a new, distinct action worth its own confirmation.
+>    - Once confirmed and stored, offer to save a `reference` memory entry (e.g. named `langfuse-api-credentials`) documenting the public key and the Keychain service/account convention used, so a future session can rediscover it without repeating this setup. Then delete the temp credentials file.
 
-   Then attempt to retrieve a matching secret from macOS Keychain using this skill's own naming convention:
-   ```bash
-   security find-generic-password -a "<public-key>" -s "langfuse-trace-tagging" -w
-   ```
-   (service name `langfuse-trace-tagging`, account = the public key value — a convention this skill defines, not something tied to any particular user or instance.)
-
-3. **If no Keychain entry exists**, run first-time setup:
-   - Never ask the user to paste the secret key directly into chat.
-   - Ask them to save `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` into a local scratch file using their own editor, then tell you the file path.
-   - `source` that file into environment variables — never echo the secret value in any visible command or output.
-   - **Explicitly ask the user for confirmation before writing anything to Keychain.** Do not treat this as implied by earlier instructions to "set up credentials" — a Keychain write is a new, distinct action worth its own confirmation.
-   - Once confirmed and stored, offer to save a `reference` memory entry (e.g. named `langfuse-api-credentials`) documenting the public key and the Keychain service/account convention used, so a future session can rediscover it without repeating this setup. Then delete the temp credentials file.
-
-Throughout: never print the secret key value in a visible command. Always source it from a file or Keychain straight into an environment variable.
+Throughout, regardless of agent: never print the secret key value in a visible command. Always source it from a file or secret store straight into an environment variable.
 
 ## 2. The tag limitation you must design around
 
