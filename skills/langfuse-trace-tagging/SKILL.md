@@ -13,14 +13,14 @@ This skill is written to be agent-agnostic: each step states the underlying requ
 
 **Requirement**: before asking the user to set anything up from scratch, check whether Langfuse API credentials for this instance are already known/persisted somewhere accessible to you. If not, guide the user through first-time setup without ever having them paste the secret key directly into chat, and without silently persisting the secret anywhere without their explicit confirmation of *how* (not just *that*) it'll be stored.
 
-> **Claude Code**: do these in order, stopping at the first that succeeds.
-> 1. Check memory for a `reference`-type entry documenting Langfuse API credentials (search for something like "langfuse api credentials"). If found, follow its retrieval instructions as written.
-> 2. Otherwise, ask the user for their Langfuse **public key** (safe to share in chat — it is not secret) and the Langfuse **host URL**, then attempt to retrieve a matching secret from macOS Keychain using this skill's own naming convention:
+> **Claude Code**: these are three *sequential, mandatory* attempts — try each one for real and only fall through to the next after the current one has actually failed. Do not skip ahead (e.g. do not jump straight to step 3's "ask the user to write both keys to a scratch file" just because step 1's memory lookup failed — step 2's Keychain check must be attempted first, every time, even though it means an extra round-trip asking for the public key).
+> 1. Check memory for a `reference`-type entry documenting Langfuse API credentials (search for something like "langfuse api credentials"). If found, follow its retrieval instructions as written. Memory is scoped per-project, so this can legitimately miss even when credentials already exist elsewhere (e.g. in Keychain from a previous project) — that's expected, not a reason to skip step 2.
+> 2. Otherwise, ask the user for their Langfuse **public key** (safe to share in chat — it is not secret) and the Langfuse **host URL**. Then — before asking for anything else — actually run this command and inspect its result:
 >    ```bash
 >    security find-generic-password -a "<public-key>" -s "langfuse-trace-tagging" -w
 >    ```
->    (service name `langfuse-trace-tagging`, account = the public key value — a convention this skill defines, not something tied to any particular user or instance.)
-> 3. If no Keychain entry exists, run first-time setup:
+>    (service name `langfuse-trace-tagging`, account = the public key value — a convention this skill defines, not something tied to any particular user or instance.) If this prints a secret, use it and stop here — do not proceed to step 3.
+> 3. Only if step 2's command actually returned an error (not found / empty), run first-time setup:
 >    - Ask the user to save `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` into a local scratch file using their own editor, then tell you the file path.
 >    - `source` that file into environment variables — never echo the secret value in any visible command or output.
 >    - **Explicitly ask the user for confirmation before writing anything to Keychain.** Do not treat this as implied by earlier instructions to "set up credentials" — a Keychain write is a new, distinct action worth its own confirmation.
