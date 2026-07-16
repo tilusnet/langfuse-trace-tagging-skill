@@ -44,14 +44,24 @@ Practical consequence: **once you apply a tag to a trace, it is there permanentl
 
 **Hard rule that follows from this**: always build and show the user a full proposed tag table and get explicit confirmation *before* calling the ingestion API. Never apply anything "provisionally." If the user later asks to reduce or correct an already-applied tag set, tell them plainly that it isn't possible via API/SDK/UI, and the only paths are living with the current tags or destructively rebuilding the traces.
 
-## 3. Propose tags for confirmation
+## 3. Identify which session to tag
+
+**Requirement**: work out which Langfuse session the tags apply to before building the proposal, offering the ongoing/current session as a convenient default when the user's request is ambiguous about which session they mean.
+
+> **Claude Code**: if the user says something like "tag this session," "tag this conversation," or otherwise doesn't name a specific session, offer the **current session** as the likely target rather than making them go look up an ID:
+> - The current session's ID is available directly as the `CLAUDE_CODE_SESSION_ID` environment variable. This is the exact same value the `langfuse-observability` plugin (if installed) sends as each trace's `session_id` field with no transformation — so it's safe to pass straight through as `--session-id` in step 5's lookup.
+> - Still name it and confirm before using it (e.g. "Tag the current session (`<value of CLAUDE_CODE_SESSION_ID>`)?") — don't assume silently, since "this session" is sometimes said about a past/different session shown on screen.
+> - If the user names a specific session ID, or points you at one in the Langfuse UI, use that instead of the env var.
+> - The credentials this skill uses (step 1) only need to belong to the *same Langfuse project* as the session being tagged — a project can have more than one valid key pair, so the key pair that originally ingested the traces does **not** need to match the one this skill uses to tag them.
+
+## 4. Propose tags for confirmation
 
 - Use a `topic:issue` naming convention, e.g. `service-name:short-issue-slug`.
-- Derive proposed tags from the conversation content you already have in context — do not re-fetch raw trace input/output to do this (see the safety note in step 4).
+- Derive proposed tags from the conversation content you already have in context — do not re-fetch raw trace input/output to do this (see the safety note in step 5).
 - Present the proposal as a markdown table: trace/turn range (or "whole session" if uniform) → proposed tag(s) → one-line rationale.
-- Get explicit confirmation or adjustment from the user before proceeding to step 5. Treat silence or a vague "sounds good" as insufficient if the table is large or the tags are consequential — ask directly if anything is ambiguous.
+- Get explicit confirmation or adjustment from the user before proceeding to step 6. Treat silence or a vague "sounds good" as insufficient if the table is large or the tags are consequential — ask directly if anything is ambiguous.
 
-## 4. Fetching trace metadata safely
+## 5. Fetching trace metadata safely
 
 If you need the list of traces for a session (IDs, timestamps, turn numbers) to build the proposal table:
 
@@ -61,7 +71,7 @@ langfuse-cli api traces list --session-id "<session-id>" --fields core --json
 
 **Never fetch or persist the `io` field group (trace input/output) to disk.** Trace content can contain secrets pasted during the session — API keys, passwords, tokens, connection strings. If you genuinely need per-trace content to classify topics accurately, view it via a tool call in-session rather than writing it to any file, and never copy it into a scratch file for later reference.
 
-## 5. Applying tags
+## 6. Applying tags
 
 Once the table is confirmed:
 
