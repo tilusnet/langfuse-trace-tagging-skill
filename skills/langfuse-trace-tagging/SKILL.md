@@ -92,3 +92,8 @@ Once the table is confirmed:
 3. POST to `<host>/api/public/ingestion` with header `Authorization: Basic <base64(public_key:secret_key)>`.
 4. Chunk at roughly 50 events per batch (the endpoint has a 3.5MB total batch-size limit).
 5. Verify by re-fetching one sample trace afterward and confirming its tags match what was intended.
+6. Give the user a direct link to review the result in the Langfuse UI:
+   ```bash
+   langfuse-cli api projects get-public --json
+   ```
+   returns the project associated with the API key pair, including its `id`. The session view URL is `<host>/project/<projectId>/sessions/<sessionId>`; for a single trace it's `<host>/project/<projectId>/traces/<traceId>`. Prefer the session-level link when tags were applied session-wide (the common case); link individual traces only if tags were applied per-trace with distinct tag sets.
