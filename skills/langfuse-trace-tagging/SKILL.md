@@ -15,7 +15,7 @@ This skill is written to be agent-agnostic: each step states the underlying requ
 
 > **Claude Code**: these are three *sequential, mandatory* attempts — try each one for real and only fall through to the next after the current one has actually failed. Do not skip ahead (e.g. do not jump straight to step 3's "ask the user to write both keys to a scratch file" just because step 1's memory lookup failed — step 2's Keychain check must be attempted first, every time, even without already knowing the public key).
 > 1. Check memory for a `reference`-type entry documenting Langfuse API credentials (search for something like "langfuse api credentials"). If found, follow its retrieval instructions as written. Memory is scoped per-project, so this can legitimately miss even when credentials already exist elsewhere (e.g. in Keychain from a previous project) — that's expected, not a reason to skip step 2.
-> 2. Otherwise, before asking the user to type anything, check whether Keychain already has an entry under this skill's service name — without needing the public key up front:
+> 2. Otherwise, before asking the user to type anything, check whether Keychain already has an entry under this skill's service name — without needing the public key up front. First, tell the user in one short line what you're about to do and why (e.g. "Checking macOS Keychain for an existing `langfuse-trace-tagging` credential entry — you may see a permission prompt from Keychain itself, that's expected and safe to allow"), since the OS-level access prompt this command can trigger otherwise reads as unexplained and alarming. Then run:
 >    ```bash
 >    security find-generic-password -s "langfuse-trace-tagging" -g
 >    ```
