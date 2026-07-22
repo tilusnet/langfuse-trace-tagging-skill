@@ -1,6 +1,6 @@
 ---
 name: langfuse-trace-tagging
-description: Tag Langfuse traces/sessions via the ingestion API. Use when the user asks to tag a Langfuse session, review/apply topic tags for a coding session, or manage trace tags. Handles credential discovery/setup generically, and works around Langfuse's tags-are-append-only-union API limitation by always getting a proposed tag table confirmed before applying anything (since applied tags cannot be removed or replaced).
+description: Tag Langfuse traces/sessions via the ingestion API. Use when the user asks to tag a Langfuse session, review/apply topic tags for a coding session, or manage trace tags. Handles credential discovery/setup generically, and works around Langfuse's tags-are-append-only-union API limitation by always getting a proposed tag table confirmed before applying anything (since applied tags cannot be removed or replaced). Accepts an optional comma-separated list of suggested tags as its argument (e.g. `tag1,tag2`) to bias classification toward a known set instead of inventing tags freely.
 ---
 
 # Langfuse Trace Tagging
@@ -77,7 +77,15 @@ Practical consequence: **once you apply a tag to a trace, it is there permanentl
 
 ## 4. Propose tags for confirmation
 
-- Use a `topic:issue` naming convention, e.g. `service-name:short-issue-slug`.
+**Optional invocation argument**: this skill accepts an optional comma-separated list of suggested tags, e.g. `tag1,tag2,tag3` (in Claude Code, whatever text follows the skill invocation — `/langfuse-trace-tagging tag1,tag2`). Trim whitespace around each entry; treat a missing or empty argument as "no suggestions" and fall back to fully freeform derivation below.
+
+> When a suggested-tag list is provided, it changes step 4's approach, not step 6's confirmation requirement:
+> - Try each trace/turn against the suggested list first — do your best to cover as many traces as possible using only those tags before reaching for anything new. Don't force a bad fit: a trace that genuinely doesn't match any suggested tag shouldn't get one wedged in just to avoid inventing a tag.
+> - Use the suggested tags as given — don't silently reshape them to fit the `topic:issue` convention below if the user's list doesn't already follow it.
+> - In the proposal table, mark which tags came from the suggested list vs. were newly derived (e.g. an extra "source" column, or a footnote), so the user can see at a glance how much coverage the suggested set achieved.
+> - If a suggested tag doesn't match anything in the session at all, say so explicitly rather than silently dropping it — the user may expect it to appear and want to know why it didn't.
+
+- Absent a suggested-tag argument, use a `topic:issue` naming convention, e.g. `service-name:short-issue-slug`.
 - Derive proposed tags from the conversation content you already have in context — do not re-fetch raw trace input/output to do this (see the safety note in step 5).
 - Present the proposal as a markdown table: trace/turn range (or "whole session" if uniform) → proposed tag(s) → one-line rationale.
 - Get explicit confirmation or adjustment from the user before proceeding to step 6. Treat silence or a vague "sounds good" as insufficient if the table is large or the tags are consequential — ask directly if anything is ambiguous.
