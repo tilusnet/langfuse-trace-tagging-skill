@@ -84,11 +84,15 @@ Practical consequence: **once you apply a tag to a trace, it is there permanentl
 
 ## 5. Fetching trace metadata safely
 
-If you need the list of traces for a session (IDs, timestamps, turn numbers) to build the proposal table:
+If you need the list of traces for a session (IDs, timestamps, turn numbers) to build the proposal table, use the `langfuse-cli` PyPI package (binary name is `lf`, **not** `langfuse-cli` — that name collision has caused this step to silently fail before).
 
-```bash
-langfuse-cli api traces list --session-id "<session-id>" --fields core --json
-```
+> **Claude Code**: check `which lf` (or platform equivalent) first. If missing, tell the user in one line and ask before installing — `pip install langfuse-cli` (or `npm i -g langfuse-cli` for the separate, differently-shaped npm package of the same name; prefer pip unless the user's environment is npm-only). If the user declines the install, or it's unavailable, fall back to calling `<host>/api/public/traces?sessionId=<id>&limit=<n>` directly with `curl` and the same Basic-auth header used in step 6, piping through `jq` to select only the safe fields (see the `io`-field warning below) — do not treat a missing CLI as a reason to skip this step.
+>
+> Auth is via the same `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`/`LANGFUSE_HOST` env vars already sourced in step 1 — no separate `lf configure`/login needed. Global output flags (`--json`, `--fields`) go *before* the subcommand, not after:
+> ```bash
+> lf --json --fields id,name,timestamp,tags traces list --session-id "<session-id>" --limit 100
+> ```
+> `--fields` takes a literal comma-separated field list (there is no `core` preset/group — pass the field names you actually want, as above).
 
 **Never fetch or persist the `io` field group (trace input/output) to disk.** Trace content can contain secrets pasted during the session — API keys, passwords, tokens, connection strings. If you genuinely need per-trace content to classify topics accurately, view it via a tool call in-session rather than writing it to any file, and never copy it into a scratch file for later reference.
 
@@ -113,8 +117,8 @@ Once the table is confirmed:
 3. POST to `<host>/api/public/ingestion` with header `Authorization: Basic <base64(public_key:secret_key)>`.
 4. Chunk at roughly 50 events per batch (the endpoint has a 3.5MB total batch-size limit).
 5. Verify by re-fetching one sample trace afterward and confirming its tags match what was intended.
-6. Give the user a direct link to review the result in the Langfuse UI:
+6. Give the user a direct link to review the result in the Langfuse UI. `lf` (see step 5) has no `projects` subcommand, so fetch the project ID via `curl` instead:
    ```bash
-   langfuse-cli api projects get-public --json
+   curl -s -H "Authorization: Basic <base64(public_key:secret_key)>" "<host>/api/public/projects" | jq '.data[0].id'
    ```
-   returns the project associated with the API key pair, including its `id`. The session view URL is `<host>/project/<projectId>/sessions/<sessionId>`; for a single trace it's `<host>/project/<projectId>/traces/<traceId>`. Prefer the session-level link when tags were applied session-wide (the common case); link individual traces only if tags were applied per-trace with distinct tag sets.
+   returns the project associated with the API key pair. The session view URL is `<host>/project/<projectId>/sessions/<sessionId>`; for a single trace it's `<host>/project/<projectId>/traces/<traceId>`. Prefer the session-level link when tags were applied session-wide (the common case); link individual traces only if tags were applied per-trace with distinct tag sets.
