@@ -81,6 +81,7 @@ Practical consequence: **once you apply a tag to a trace, it is there permanentl
 - Derive proposed tags from the conversation content you already have in context — do not re-fetch raw trace input/output to do this (see the safety note in step 5).
 - Present the proposal as a markdown table: trace/turn range (or "whole session" if uniform) → proposed tag(s) → one-line rationale.
 - Get explicit confirmation or adjustment from the user before proceeding to step 6. Treat silence or a vague "sounds good" as insufficient if the table is large or the tags are consequential — ask directly if anything is ambiguous.
+- Deriving tags across a long session (many traces/turns) can take a while with no visible output in between. Don't go silent for that whole stretch — post short progress updates as you work through it (e.g. "Reviewed 20/60 traces so far, still classifying…"), especially before/after any long-running tool call (trace fetch, CLI install) in step 5.
 
 ## 5. Fetching trace metadata safely
 
