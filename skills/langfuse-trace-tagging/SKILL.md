@@ -70,32 +70,38 @@ Practical consequence: **once you apply a tag to a trace, it is there permanentl
 **Requirement**: work out which Langfuse session the tags apply to before building the proposal, offering the ongoing/current session as a convenient default when the user's request is ambiguous about which session they mean.
 
 > **Claude Code**: if the user says something like "tag this session," "tag this conversation," or otherwise doesn't name a specific session, offer the **current session** as the likely target rather than making them go look up an ID:
-> - The current session's ID is available directly as the `CLAUDE_CODE_SESSION_ID` environment variable. This is the exact same value the `langfuse-observability` plugin (if installed) sends as each trace's `session_id` field with no transformation — so it's safe to pass straight through as `--session-id` in step 5's lookup. Before running the `echo "$CLAUDE_CODE_SESSION_ID"` (or equivalent) command to read it, say in one short line what you're doing and why (e.g. "Reading the current session ID from the environment so I can offer it as the tagging target") — an unexplained tool call/permission prompt for this is just as disorienting as the Keychain one in step 2, even though the value itself isn't sensitive.
+> - The current session's ID is available directly as the `CLAUDE_CODE_SESSION_ID` environment variable. This is the exact same value the `langfuse-observability` plugin (if installed) sends as each trace's `session_id` field with no transformation — so it's safe to pass straight through as `--session-id` in step 6's lookup. Before running the `echo "$CLAUDE_CODE_SESSION_ID"` (or equivalent) command to read it, say in one short line what you're doing and why (e.g. "Reading the current session ID from the environment so I can offer it as the tagging target") — an unexplained tool call/permission prompt for this is just as disorienting as the Keychain one in step 2, even though the value itself isn't sensitive.
 > - Still name it and confirm before using it (e.g. "Tag the current session (`<value of CLAUDE_CODE_SESSION_ID>`)?") — don't assume silently, since "this session" is sometimes said about a past/different session shown on screen.
 > - If the user names a specific session ID, or points you at one in the Langfuse UI, use that instead of the env var.
 > - The credentials this skill uses (step 1) only need to belong to the *same Langfuse project* as the session being tagged — a project can have more than one valid key pair, so the key pair that originally ingested the traces does **not** need to match the one this skill uses to tag them.
 
-## 4. Propose tags for confirmation
+## 4. Ingesting a conversation export as traces (if the traces don't already exist)
+
+**Requirement**: this skill is primarily about tagging traces that already exist in Langfuse. But if the user instead hands you a chat export identified by a conversation UUID (e.g. a claude.ai data export) and asks you to push it into Langfuse as traces before tagging it, always attach a `metadata.source_url` field to every trace you create, pointing back to the original conversation — so the trace retains provenance back to its source even after the export file itself is gone, deleted, or moved. Do this for every trace in the batch, not just a sample; the field is cheap and there's no reason to skip it on any of them.
+
+> **Claude Code**: for a claude.ai export (a JSON object or array of objects with a top-level `"uuid"` field), the source URL is `https://claude.ai/chat/<conversation-uuid>`. Include `"metadata": {"source_url": "<url>", ...}` (merge with any other metadata you're already setting, e.g. `"source": "claude.ai-export"`) in every `trace-create` event body of the ingestion batch (see step 7 for the batch/event shape). Before ingesting, also apply the same `io`-field caution as step 6: if the export contains meta-conversation about setting up credentials or the push itself (which can include pasted secrets), exclude those turns from ingestion rather than pushing them as trace content — confirm the ingestion scope (which turns, what session grouping) with the user before writing anything, the same way step 2 requires confirmation before applying tags.
+
+## 5. Propose tags for confirmation
 
 **Optional invocation argument**: this skill accepts an optional comma-separated list of suggested tags, e.g. `tag1,tag2,tag3` (in Claude Code, whatever text follows the skill invocation — `/langfuse-trace-tagging tag1,tag2`). Trim whitespace around each entry; treat a missing or empty argument as "no suggestions" and fall back to fully freeform derivation below.
 
-> When a suggested-tag list is provided, it changes step 4's approach, not step 6's confirmation requirement:
+> When a suggested-tag list is provided, it changes step 5's approach, not step 7's confirmation requirement:
 > - Try each trace/turn against the suggested list first — do your best to cover as many traces as possible using only those tags before reaching for anything new. Don't force a bad fit: a trace that genuinely doesn't match any suggested tag shouldn't get one wedged in just to avoid inventing a tag.
 > - Use the suggested tags as given — don't silently reshape them to fit the `topic:issue` convention below if the user's list doesn't already follow it.
 > - In the proposal table, mark which tags came from the suggested list vs. were newly derived (e.g. an extra "source" column, or a footnote), so the user can see at a glance how much coverage the suggested set achieved.
 > - If a suggested tag doesn't match anything in the session at all, say so explicitly rather than silently dropping it — the user may expect it to appear and want to know why it didn't.
 
 - Absent a suggested-tag argument, use a `topic:issue` naming convention, e.g. `service-name:short-issue-slug`.
-- Derive proposed tags from the conversation content you already have in context — do not re-fetch raw trace input/output to do this (see the safety note in step 5).
+- Derive proposed tags from the conversation content you already have in context — do not re-fetch raw trace input/output to do this (see the safety note in step 6).
 - Present the proposal as a markdown table: trace/turn range (or "whole session" if uniform) → proposed tag(s) → one-line rationale.
-- Get explicit confirmation or adjustment from the user before proceeding to step 6. Treat silence or a vague "sounds good" as insufficient if the table is large or the tags are consequential — ask directly if anything is ambiguous.
-- Deriving tags across a long session (many traces/turns) can take a while with no visible output in between. Don't go silent for that whole stretch — post short progress updates as you work through it (e.g. "Reviewed 20/60 traces so far, still classifying…"), especially before/after any long-running tool call (trace fetch, CLI install) in step 5.
+- Get explicit confirmation or adjustment from the user before proceeding to step 7. Treat silence or a vague "sounds good" as insufficient if the table is large or the tags are consequential — ask directly if anything is ambiguous.
+- Deriving tags across a long session (many traces/turns) can take a while with no visible output in between. Don't go silent for that whole stretch — post short progress updates as you work through it (e.g. "Reviewed 20/60 traces so far, still classifying…"), especially before/after any long-running tool call (trace fetch, CLI install) in step 6.
 
-## 5. Fetching trace metadata safely
+## 6. Fetching trace metadata safely
 
 If you need the list of traces for a session (IDs, timestamps, turn numbers) to build the proposal table, use the `langfuse-cli` PyPI package (binary name is `lf`, **not** `langfuse-cli` — that name collision has caused this step to silently fail before).
 
-> **Claude Code**: check `which lf` (or platform equivalent) first. If missing, tell the user in one line and ask before installing — `pip install langfuse-cli` (or `npm i -g langfuse-cli` for the separate, differently-shaped npm package of the same name; prefer pip unless the user's environment is npm-only). If the user declines the install, or it's unavailable, fall back to calling `<host>/api/public/traces?sessionId=<id>&limit=<n>` directly with `curl` and the same Basic-auth header used in step 6, piping through `jq` to select only the safe fields (see the `io`-field warning below) — do not treat a missing CLI as a reason to skip this step.
+> **Claude Code**: check `which lf` (or platform equivalent) first. If missing, tell the user in one line and ask before installing — `pip install langfuse-cli` (or `npm i -g langfuse-cli` for the separate, differently-shaped npm package of the same name; prefer pip unless the user's environment is npm-only). If the user declines the install, or it's unavailable, fall back to calling `<host>/api/public/traces?sessionId=<id>&limit=<n>` directly with `curl` and the same Basic-auth header used in step 7, piping through `jq` to select only the safe fields (see the `io`-field warning below) — do not treat a missing CLI as a reason to skip this step.
 >
 > Auth is via the same `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`/`LANGFUSE_HOST` env vars already sourced in step 1 — no separate `lf configure`/login needed. Global output flags (`--json`, `--fields`) go *before* the subcommand, not after:
 > ```bash
@@ -105,7 +111,7 @@ If you need the list of traces for a session (IDs, timestamps, turn numbers) to 
 
 **Never fetch or persist the `io` field group (trace input/output) to disk.** Trace content can contain secrets pasted during the session — API keys, passwords, tokens, connection strings. If you genuinely need per-trace content to classify topics accurately, view it via a tool call in-session rather than writing it to any file, and never copy it into a scratch file for later reference.
 
-## 6. Applying tags
+## 7. Applying tags
 
 Once the table is confirmed:
 
@@ -126,7 +132,7 @@ Once the table is confirmed:
 3. POST to `<host>/api/public/ingestion` with header `Authorization: Basic <base64(public_key:secret_key)>`.
 4. Chunk at roughly 50 events per batch (the endpoint has a 3.5MB total batch-size limit).
 5. Verify by re-fetching one sample trace afterward and confirming its tags match what was intended.
-6. Give the user a direct link to review the result in the Langfuse UI. `lf` (see step 5) has no `projects` subcommand, so fetch the project ID via `curl` instead:
+6. Give the user a direct link to review the result in the Langfuse UI. `lf` (see step 6) has no `projects` subcommand, so fetch the project ID via `curl` instead:
    ```bash
    curl -s -H "Authorization: Basic <base64(public_key:secret_key)>" "<host>/api/public/projects" | jq '.data[0].id'
    ```
