@@ -21,13 +21,13 @@ This skill is written to be agent-agnostic: each step states the underlying requ
 >    ```bash
 >    security find-generic-password -s "langfuse-trace-tagging"
 >    ```
->    (no `-g`/`-w` here — that would print the password itself, not just the account.) This prints the item's attributes, including `"acct"` (the public key) and `"icmt"` (comment — this skill's convention stores the Langfuse **host URL** here, since Keychain generic-password items have no dedicated host field).
+>    (no `-g`/`-w` here — that would print the password itself, not just the account.) This prints the item's attributes, including `"acct"` (the public key), `"icmt"` (comment — this skill's convention stores a short human-readable **note** here, e.g. which project or agent the keypair belongs to; this field is the one visible when you double-click the item in Keychain Access, which is why it's the right place for something a human needs to eyeball to tell keypairs apart), and `"gena"` (generic attribute — stores the Langfuse **host URL** here instead, since Keychain generic-password items have no dedicated host field, and this field is CLI-only/not shown in Keychain Access, which suits something tooling reads programmatically rather than something you'd glance at).
 >
 >    **Linux — Secret Service (GNOME Keyring/KWallet), via `secret-tool` (part of `libsecret-tools`):**
 >    ```bash
 >    secret-tool search --all service langfuse-trace-tagging
 >    ```
->    This is meant to print item attributes only (`account`, `host` as free-form attributes, since Secret Service has no fixed account/comment schema like Keychain — store whatever key/value attributes you like at write time) — not the secret; `secret-tool lookup` is the one that prints only the secret. If `secret-tool` isn't installed, or the command errors because no Secret Service daemon is running (common on headless/server Linux with no desktop session), tell the user this platform has no available native store and go straight to step 3, noting that persisted storage won't be possible this session either — treat the scratch-file/env-var flow as the steady state on that machine rather than retrying every session.
+>    This is meant to print item attributes only (`account`, `host`, `note` as free-form attributes, since Secret Service has no fixed account/comment schema like Keychain — store whatever key/value attributes you like at write time) — not the secret; `secret-tool lookup` is the one that prints only the secret. If `secret-tool` isn't installed, or the command errors because no Secret Service daemon is running (common on headless/server Linux with no desktop session), tell the user this platform has no available native store and go straight to step 3, noting that persisted storage won't be possible this session either — treat the scratch-file/env-var flow as the steady state on that machine rather than retrying every session.
 >
 >    **Windows — DPAPI-encrypted file (no extra modules required), via PowerShell:**
 >    ```powershell
@@ -35,25 +35,25 @@ This skill is written to be agent-agnostic: each step states the underlying requ
 >    ```
 >    if present:
 >    ```powershell
->    Get-Content "$env:LOCALAPPDATA\langfuse-trace-tagging\credentials.json" | ConvertFrom-Json | Select-Object publicKey, host
+>    Get-Content "$env:LOCALAPPDATA\langfuse-trace-tagging\credentials.json" | ConvertFrom-Json | Select-Object publicKey, host, note
 >    ```
->    This convention stores `publicKey` and `host` in plaintext JSON alongside a `secretEncrypted` field (produced via `ConvertFrom-SecureString`, which uses Windows DPAPI to encrypt to the current user+machine — the closest Windows-native equivalent of Keychain/Secret Service without installing anything extra). `Select-Object publicKey, host` above deliberately omits `secretEncrypted` from what you inspect/show.
+>    This convention stores `publicKey`, `host`, and `note` in plaintext JSON alongside a `secretEncrypted` field (produced via `ConvertFrom-SecureString`, which uses Windows DPAPI to encrypt to the current user+machine — the closest Windows-native equivalent of Keychain/Secret Service without installing anything extra). `Select-Object publicKey, host` above deliberately omits `secretEncrypted` from what you inspect/show.
 >
->    Whichever platform: if an entry is found, tell the user which public key (and host, if discovered) it's under and ask them to confirm it's the right one to use — do not silently assume a found entry is the right one, since a machine could plausibly have entries for more than one Langfuse instance. If confirmed, retrieve the secret for real use — only now, with a specific known-good account, is it safe to pull the actual secret value:
+>    Whichever platform: if an entry is found, tell the user which public key (and its note/host, if discovered) it's under and ask them to confirm it's the right one to use — do not silently assume a found entry is the right one, since a machine could plausibly have entries for more than one Langfuse instance, or even more than one keypair for the *same* instance (e.g. distinct keypairs for distinct agents/projects sharing a host) — the note field is precisely what lets the user tell those apart at a glance. If confirmed, retrieve the secret for real use — only now, with a specific known-good account, is it safe to pull the actual secret value:
 >    - macOS: `security find-generic-password -a "<confirmed-public-key>" -s "langfuse-trace-tagging" -w`
 >    - Linux: `secret-tool lookup service langfuse-trace-tagging account "<confirmed-public-key>"`
 >    - Windows: decrypt `secretEncrypted` for the matching entry — `$secure = $data.secretEncrypted | ConvertTo-SecureString; $secret = [System.Net.NetworkCredential]::new('', $secure).Password` — and assign straight into an env var, never print `$secret` in a visible command.
 >
->    Then — since this path bypassed step 1's memory lookup — offer to save a `reference` memory entry now (see step 3's last bullet) so a future session can skip straight to step 1, and stop here; do not proceed to step 3. If the user says it's the wrong key pair (or no entry was found at all), ask them for the correct public key and host URL, then retry the platform's single-account lookup for that specific account before falling through to step 3.
+>    Then — since this path bypassed step 1's memory lookup — offer to save a `reference` memory entry now (see step 3's last bullet) so a future session can skip straight to step 1, and stop here; do not proceed to step 3. If the user says it's the wrong key pair (or no entry was found at all), ask them for the correct public key, host URL, and note, then retry the platform's single-account lookup for that specific account before falling through to step 3.
 > 3. Only if no matching entry exists for the confirmed public key on this platform's native store, run first-time setup:
->    - Ask the user to save `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and the Langfuse host URL into a local scratch file using their own editor, then tell you the file path.
+>    - Ask the user to save `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and the Langfuse host URL into a local scratch file using their own editor, then tell you the file path. Also ask for a short **note** describing this keypair (e.g. the project or agent it belongs to) — this is what will let the user tell keypairs apart later, especially when more than one shares the same host.
 >    - `source` (or, on Windows, read via PowerShell) that file into environment variables — never echo the secret value in any visible command or output.
 >    - **Explicitly ask the user for confirmation before writing anything to the native store.** Do not treat this as implied by earlier instructions to "set up credentials" — this write is a new, distinct action worth its own confirmation.
->    - Once confirmed, write it so future native-store-only lookups (step 2) don't need to ask for the host again:
->      - macOS: `security add-generic-password -a "<public-key>" -s "langfuse-trace-tagging" -w "<secret-key>" -j "<host-url>"`
->      - Linux: `secret-tool store --label="langfuse-trace-tagging" service langfuse-trace-tagging account "<public-key>" host "<host-url>"` (reads the secret from stdin — pipe it in from the sourced env var, never as a literal command-line argument)
->      - Windows: write `{"publicKey": "<public-key>", "host": "<host-url>", "secretEncrypted": "<ConvertFrom-SecureString output>"}` to `$env:LOCALAPPDATA\langfuse-trace-tagging\credentials.json`
->    - Offer to save a `reference` memory entry (e.g. named `langfuse-api-credentials`) documenting the public key, the host URL, and the native-store convention used for this platform, so a future session can rediscover it without repeating this setup. Then delete the temp credentials file.
+>    - Once confirmed, write it so future native-store-only lookups (step 2) don't need to ask for the host or note again:
+>      - macOS: `security add-generic-password -a "<public-key>" -s "langfuse-trace-tagging" -w "<secret-key>" -j "<note>" -G "<host-url>"` (`-j` comment holds the note — GUI-visible in Keychain Access; `-G` generic attribute holds the host — CLI-only, not GUI-visible)
+>      - Linux: `secret-tool store --label="langfuse-trace-tagging" service langfuse-trace-tagging account "<public-key>" host "<host-url>" note "<note>"` (reads the secret from stdin — pipe it in from the sourced env var, never as a literal command-line argument)
+>      - Windows: write `{"publicKey": "<public-key>", "host": "<host-url>", "note": "<note>", "secretEncrypted": "<ConvertFrom-SecureString output>"}` to `$env:LOCALAPPDATA\langfuse-trace-tagging\credentials.json`
+>    - Offer to save a `reference` memory entry (e.g. named `langfuse-api-credentials`) documenting the public key, the host URL, the note, and the native-store convention used for this platform, so a future session can rediscover it without repeating this setup. Then delete the temp credentials file.
 
 Throughout, regardless of agent or platform: never print the secret key value in a visible command. Always source it from a file or secret store straight into an environment variable.
 
