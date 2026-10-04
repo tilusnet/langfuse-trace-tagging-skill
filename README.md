@@ -50,6 +50,26 @@ Each tag becomes one **categorical score** named `tag` whose value is the tag st
 - **Langfuse doesn't validate score targets**, so a score for a nonexistent trace ID still succeeds; the helper checks trace IDs against the session first.
 - **Not covered**: ingesting a chat export as new traces on v4 (that needs the OTLP endpoint, with tags set at creation).
 
+## How the two skills differ
+
+The two skills are **not** feature-equivalent. Some differences are forced by Langfuse, others are gaps still to be closed.
+
+| Capability | v3 skill | v4 skill |
+| --- | --- | --- |
+| What's stored | **Real tags** | **Labels as categorical scores** (not tag chips; dated when created) |
+| Remove or correct afterwards | **No**: v3 tags are append-only | **Yes**, but slowly through the API (about 2 minutes per label) |
+| Find traces by tag | Not provided | **Yes** (`query`: labels plus real tags, any/all) |
+| Dry run, undo file, prune | No | **Yes** |
+| Ingest a chat export as new traces | **Yes** (step 4, with `metadata.source_url`) | **No** (planned; needs the OTLP endpoint) |
+| Credential discovery | Full: memory, then macOS Keychain / Linux Secret Service / Windows DPAPI, then guided first-time setup and storing | Condensed: memory, macOS Keychain, otherwise export the variables yourself |
+| Propose tags, with the optional suggested-tag argument | Yes | Yes |
+| "Confirm the table before applying" rule | Hard rule (nothing can be undone) | Kept, but softer (labels can be removed) |
+| Uses a helper script | No (raw `curl` and `lf`) | Yes (`scripts/lf_labels.py`) |
+| Works on | Langfuse v3 | Langfuse v4 |
+
+- **Forced by Langfuse:** real tags can't be added after creation on v4, so the v4 skill has to use scores; and only the v4 skill can remove anything, because v3 tags are append-only. In the UI a v3 tag shows in the tag filters, whereas a v4 label shows in the Scores views and `scores.tag:"…"` filters (the v4 `query` hides this by returning real tags and labels together).
+- **Gaps still to close:** export ingestion on v4, and credential-discovery parity (the Linux and Windows paths and the detailed first-time setup were condensed in the v4 skill). Aligning the two skills more closely is on the maintainer's backlog.
+
 ## Install
 
 ### Claude Code
