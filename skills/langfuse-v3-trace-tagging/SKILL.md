@@ -1,9 +1,11 @@
 ---
-name: langfuse-trace-tagging
-description: Tag Langfuse traces/sessions via the ingestion API. Use when the user asks to tag a Langfuse session, review/apply topic tags for a coding session, or manage trace tags. Handles credential discovery/setup generically, and works around Langfuse's tags-are-append-only-union API limitation by always getting a proposed tag table confirmed before applying anything (since applied tags cannot be removed or replaced). Accepts an optional comma-separated list of suggested tags as its argument (e.g. `tag1,tag2`) to bias classification toward a known set instead of inventing tags freely.
+name: langfuse-v3-trace-tagging
+description: For Langfuse v3 ONLY (on Langfuse v4 use the langfuse-v4-trace-tagging skill instead). Tag Langfuse traces/sessions via the ingestion API. Use when the user asks to tag a Langfuse session, review/apply topic tags for a coding session, or manage trace tags. Handles credential discovery/setup generically, and works around Langfuse's tags-are-append-only-union API limitation by always getting a proposed tag table confirmed before applying anything (since applied tags cannot be removed or replaced). Accepts an optional comma-separated list of suggested tags as its argument (e.g. `tag1,tag2`) to bias classification toward a known set instead of inventing tags freely.
 ---
 
 # Langfuse Trace Tagging
+
+> **Langfuse v3 only.** This skill relies on the v3 ingestion API (`trace-create` events) and the v3 read API (`/api/public/traces`), both of which Langfuse v4 removes or rejects, and v4 tags can't be changed after creation at all. Before doing anything, check the server version (`GET <host>/api/public/health` returns `{"version": "..."}`); if it is **4.x**, stop and use the **`langfuse-v4-trace-tagging`** skill instead.
 
 Tags a Langfuse session's traces via the ingestion API. Read this whole skill before doing anything — the tag-mutation limitation in step 2 changes how you should approach every step after it.
 
@@ -83,7 +85,7 @@ Practical consequence: **once you apply a tag to a trace, it is there permanentl
 
 ## 5. Propose tags for confirmation
 
-**Optional invocation argument**: this skill accepts an optional comma-separated list of suggested tags, e.g. `tag1,tag2,tag3` (in Claude Code, whatever text follows the skill invocation — `/langfuse-trace-tagging tag1,tag2`). Trim whitespace around each entry; treat a missing or empty argument as "no suggestions" and fall back to fully freeform derivation below.
+**Optional invocation argument**: this skill accepts an optional comma-separated list of suggested tags, e.g. `tag1,tag2,tag3` (in Claude Code, whatever text follows the skill invocation — `/langfuse-v3-trace-tagging tag1,tag2`). Trim whitespace around each entry; treat a missing or empty argument as "no suggestions" and fall back to fully freeform derivation below.
 
 > When a suggested-tag list is provided, it changes step 5's approach, not step 7's confirmation requirement:
 > - Try each trace/turn against the suggested list first — do your best to cover as many traces as possible using only those tags before reaching for anything new. Don't force a bad fit: a trace that genuinely doesn't match any suggested tag shouldn't get one wedged in just to avoid inventing a tag.
