@@ -40,7 +40,7 @@ In Langfuse v4 each observation is written once to an append-only table and carr
 
 ### What it does
 
-Each tag becomes one **categorical score** named `tag` whose value is the tag string (e.g. `traefik:routing-priority`); several tags on a trace are several scores. A bundled, standard-library-only Python helper (`scripts/lf_labels.py`) does the work: `traces` (list a session's traces with their real tags and labels), `apply` (dry-run first, creates only missing labels, can `--prune`, writes an undo file), `remove`, and `query` (finds traces by tag, returning the **union of label scores and real tags**, so historic tags still count). The skill keeps the same confirm-the-proposal-before-applying flow as the v3 skill, and likewise never fetches trace `input`/`output`.
+Each tag becomes one **categorical score** named `tag` whose value is the tag string (e.g. `traefik:routing-priority`); several tags on a trace are several scores. A bundled, standard-library-only Python helper (`scripts/lf_labels.py`) does the work: `traces` (list a session's traces with their real tags and labels), `apply` (dry-run first, creates only missing labels, can `--prune`, writes an undo file), `remove`, and `query` (finds traces by tag, returning the **union of label scores and real tags**, so historic tags still count). Every label also gets a derived **`tag-topic`** score (the part of the tag before its first colon), kept in step by `apply`/`remove` and rebuilt by `sync-topics`; because the Langfuse UI only lists a handful of categorical values in its search bar and sidebar, a few dozen topics are much easier to browse than hundreds of full tags (`query --topic` finds traces by topic). The skill keeps the same confirm-the-proposal-before-applying flow as the v3 skill, and likewise never fetches trace `input`/`output`.
 
 ### Things worth knowing
 
@@ -59,6 +59,7 @@ The two skills are **not** feature-equivalent. Some differences are forced by La
 | What's stored | **Real tags** | **Labels as categorical scores** (not tag chips; dated when created) |
 | Remove or correct afterwards | **No**: v3 tags are append-only | **Yes**, but slowly through the API (about 2 minutes per label) |
 | Find traces by tag | Not provided | **Yes** (`query`: labels plus real tags, any/all) |
+| Topic facet for UI filtering | Not needed (real tag chips) | **Yes** (derived `tag-topic` scores, `sync-topics`, `query --topic`) |
 | Dry run, undo file, prune | No | **Yes** |
 | Ingest a chat export as new traces | **Yes** (step 4, with `metadata.source_url`) | **No** (planned; needs the OTLP endpoint) |
 | Credential discovery | Full: memory, then macOS Keychain / Linux Secret Service / Windows DPAPI, then guided first-time setup and storing | Condensed: memory, macOS Keychain, otherwise export the variables yourself |

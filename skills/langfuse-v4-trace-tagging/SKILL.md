@@ -12,6 +12,7 @@ All Langfuse calls go through the bundled helper `scripts/lf_labels.py` (Python 
 ## Know before you start
 
 - **Labels are scores, not tags.** They appear in the Langfuse Scores views and the filter bar (`scores.tag:<value>`; quote values containing `:` or spaces), **not** in the tag filter chips. Tell the user this once, up front.
+- **Each label also gets a derived `tag-topic` score** (the part of the tag before its first colon, e.g. `langfuse:v4-upgrade` → `langfuse`; one per trace and topic, none for colon-less tags). Reason: the Langfuse UI shows only a handful of categorical values in its search bar and sidebar, so hundreds of full tags are hard to browse, while a few dozen topics fit. `tag` is the source of truth; `apply` and `remove` keep `tag-topic` in step, and `sync-topics` rebuilds it. Use the `topic:issue` convention so every label has a topic.
 - **Labels can be removed.** Deletions are queued and Langfuse works through them in the background, about one label every 2 minutes, so a removal takes roughly 2 minutes per label to show. Request them all at once and just tell the user how long to expect.
 - **Langfuse does not validate scores against traces**: a score for a trace ID that doesn't exist, or sits in another project, still succeeds. The helper checks trace IDs against the session first, and `info` shows which project the key pair belongs to — confirm it is the project that holds the session.
 - **Never fetch trace input/output** (the `io` field group). It can contain secrets pasted during the session. The helper only requests IDs, names, tags and timestamps; if you ever need content to classify, look at it in the conversation rather than writing it to a file.
@@ -62,7 +63,7 @@ python3 scripts/lf_labels.py apply --session "<session-id>" --labels labels.json
 python3 scripts/lf_labels.py apply --session "<session-id>" --labels labels.json --undo-file undo.json
 ```
 
-`apply` reads the labels that already exist, creates only the missing ones, and refuses trace IDs that aren't in the session, so re-running is safe. Add `--prune` to also delete labels on those traces that are **not** in the file (use it only when the user wants the file to be the complete label set). Show the user the dry-run plan before the real run, and tell them where the undo file is. Verify by re-running `traces` (new labels show within seconds; deletions take about 2 minutes per label), then give the user a link: the session view is `<host>/project/<projectId>/sessions/<sessionId>`, and `info` prints the project ID.
+`apply` reads the labels that already exist, creates only the missing ones (plus the missing `tag-topic` scores, listed in the plan), and refuses trace IDs that aren't in the session, so re-running is safe. Add `--prune` to also delete labels on those traces that are **not** in the file (use it only when the user wants the file to be the complete label set). Show the user the dry-run plan before the real run, and tell them where the undo file is. Verify by re-running `traces` (new labels show within seconds; deletions take about 2 minutes per label), then give the user a link: the session view is `<host>/project/<projectId>/sessions/<sessionId>`, and `info` prints the project ID.
 
 ## 6. Query and remove labels
 
@@ -80,4 +81,17 @@ python3 scripts/lf_labels.py remove --undo-file undo.json                       
 python3 scripts/lf_labels.py remove --session "<id>" --trace "<traceId>" --tag "topic:issue" # remove one label
 ```
 
-Both queue all deletions at once; Langfuse works through them in the background, so tell the user to expect roughly 2 minutes per label before `traces`/`query` stop showing it.
+Removing a single label also removes the trace's `tag-topic` score if no other label on that trace shares the topic; `--undo-file` reverts the topic scores that run created. 
+
+```bash
+python3 scripts/lf_labels.py query --topic langfuse [--topic litellm] [--match any|all]   # traces with any label in a topic (labels only; real tags have no topic)
+python3 scripts/lf_labels.py sync-topics [--session "<id>"]                                # dry run: topic histogram + scores to create/delete
+python3 scripts/lf_labels.py sync-topics --write                                           # apply it (back-fill, or repair drift)
+python3 scripts/lf_labels.py sync-topics --only-topic docker --write                       # pilot: touch one topic only (repeatable)
+```
+
+`sync-topics` compares every `tag` score with the `tag-topic` scores and creates the missing ones; orphan or duplicate topic scores are deleted (slow, see above). It is a dry run unless `--write` is given: show the user the plan first.
+
+**In the UI**: filter `tag-topic` in the sidebar (Categorical Scores) or with `scores.tag-topic:<topic>`, then narrow by `tag`.
+
+Both removal forms queue all deletions at once; Langfuse works through them in the background, so tell the user to expect roughly 2 minutes per label before `traces`/`query` stop showing it.
